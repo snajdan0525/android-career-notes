@@ -116,9 +116,304 @@ public ActivityResult execStartActivity(
             .startActivity(whoThread, who.getBasePackageName()
 ```
 
-　　getDefault返回的是ActivityManagerProxy对象的引用。。注意两个类：ApplicationThreadNative和ActivityManagerNative。。。
+　　getDefault返回的是ActivityManagerProxy对象的引用是一个Binder对象，他能够使用ActivityManagerService服务，现在我们切入到AMS的startActivity代码中：
+
+```java
+public final int startActivity(IApplicationThread caller,
+        Intent intent, String resolvedType, Uri[] grantedUriPermissions,
+        int grantedMode, IBinder resultTo,
+        String resultWho, int requestCode, boolean onlyIfNeeded, boolean debug,
+        String profileFile, ParcelFileDescriptor profileFd, boolean autoStopProfiler) {
+    return mMainStack.startActivityMayWait(caller, -1, intent, resolvedType,
+            grantedUriPermissions, grantedMode, resultTo, resultWho,
+            requestCode, onlyIfNeeded, debug, profileFile, profileFd, autoStopProfiler,
+            null, null);
+}
+```
+　　上面代码中的mMainStack是一个ActivityStack对象，AMS调用ActivityStack的一系列方法来准备要启动的Activity的相关信息。我们平时说的什么任务栈啊都在这个类中有涉及。
+　　接着看ActivityStack的startActivityMayWait：
+
+```java
+final int startActivityMayWait(IApplicationThread caller, int callingUid,
+        Intent intent, String resolvedType, Uri[] grantedUriPermissions,
+        int grantedMode, IBinder resultTo,
+        String resultWho, int requestCode, boolean onlyIfNeeded,
+        boolean debug, String profileFile, ParcelFileDescriptor profileFd,
+        boolean autoStopProfiler, WaitResult outResult, Configuration config) {
+    // Refuse possible leaked file descriptors
+    if (intent != null && intent.hasFileDescriptors()) {
+        throw new IllegalArgumentException("File descriptors passed in Intent");
+    }
+
+	//通过Intent获取用来启动Activity时所需的component对象
+    boolean componentSpecified = intent.getComponent() != null;
+
+    // Don't modify the client's object!
+    intent = new Intent(intent);
+
+    //Collect information about the target of the Intent.
+    //解析当前要启动的Activity信息,
+	//跟入代码后resolveActivity还调用了resolveIntent，queryIntentActivities等函数，这些都是很显而易见的函数功能，显然是根据intent中提供的信息，检索出最匹配的结果
+	ActivityInfo aInfo = resolveActivity(intent, resolvedType, debug,
+            profileFile, profileFd, autoStopProfiler);
+        ......
+		......
+		......
+        
+        int res = startActivityLocked(caller, intent, resolvedType,
+                grantedUriPermissions, grantedMode, aInfo,
+                resultTo, resultWho, requestCode, callingPid, callingUid,
+                onlyIfNeeded, componentSpecified, null);
+        
+        if (mConfigWillChange && mMainStack) {
+            // If the caller also wants to switch to a new configuration,
+            // do so now.  This allows a clean switch, as we are waiting
+            // for the current activity to pause (so we will not destroy
+            // it), and have not yet started the next activity.
+            mService.enforceCallingPermission(android.Manifest.permission.CHANGE_CONFIGURATION,
+                    "updateConfiguration()");
+            mConfigWillChange = false;
+            if (DEBUG_CONFIGURATION) Slog.v(TAG,
+                    "Updating to new configuration after starting activity.");
+            mService.updateConfigurationLocked(config, null, false, false);
+        }
+        
+        Binder.restoreCallingIdentity(origId);
+        
+        if (outResult != null) {
+            outResult.result = res;
+            if (res == IActivityManager.START_SUCCESS) {
+                mWaitingActivityLaunched.add(outResult);
+                do {
+                    try {
+                        mService.wait();
+                    } catch (InterruptedException e) {
+                    }
+                } while (!outResult.timeout && outResult.who == null);
+            } else if (res == IActivityManager.START_TASK_TO_FRONT) {
+                ActivityRecord r = this.topRunningActivityLocked(null);
+                if (r.nowVisible) {
+                    outResult.timeout = false;
+                    outResult.who = new ComponentName(r.info.packageName, r.info.name);
+                    outResult.totalTime = 0;
+                    outResult.thisTime = 0;
+                } else {
+                    outResult.thisTime = SystemClock.uptimeMillis();
+                    mWaitingActivityVisible.add(outResult);
+                    do {
+                        try {
+                            mService.wait();
+                        } catch (InterruptedException e) {
+                        }
+                    } while (!outResult.timeout && outResult.who == null);
+                }
+            }
+        }
+        
+        return res;
+    }
+}
+    
+```
+之后进入到startActivityLocked函数中：
+
+```java
+final int startActivityLocked(IApplicationThread caller,
+        Intent intent, String resolvedType,
+        Uri[] grantedUriPermissions,
+        int grantedMode, ActivityInfo aInfo, IBinder resultTo,
+        String resultWho, int requestCode,
+        int callingPid, int callingUid, boolean onlyIfNeeded,
+        boolean componentSpecified, ActivityRecord[] outActivity) {
+
+    int err = START_SUCCESS;
+
+    ProcessRecord callerApp = null;
+    if (caller != null) {
+        callerApp = mService.getRecordForAppLocked(caller);
+		//这个参数caller来自于execStartActivity函数中的whoThread,代表了调用者的进/
+		//程，getRecordForAppLocked就是从LRU的进程记录表中查找到这个caller对应的
+		//ProcessRecord
+        if (callerApp != null) {
+            callingPid = callerApp.pid;
+            callingUid = callerApp.info.uid;
+        } else {
+            Slog.w(TAG, "Unable to find app for caller " + caller
+                  + " (pid=" + callingPid + ") when starting: "
+                  + intent.toString());
+            err = START_PERMISSION_DENIED;
+        }
+    }
+
+    if (err == START_SUCCESS) {
+        Slog.i(TAG, "START {" + intent.toShortString(true, true, true) + "} from pid "
+                + (callerApp != null ? callerApp.pid : callingPid));
+    }
+
+    ActivityRecord sourceRecord = null;
+    ActivityRecord resultRecord = null;
+    if (resultTo != null) {
+        int index = indexOfTokenLocked(resultTo);
+        if (DEBUG_RESULTS) Slog.v(
+            TAG, "Will send result to " + resultTo + " (index " + index + ")");
+        if (index >= 0) {
+            sourceRecord = mHistory.get(index);
+            if (requestCode >= 0 && !sourceRecord.finishing) {
+                resultRecord = sourceRecord;
+            }
+        }
+    }
+
+    int launchFlags = intent.getFlags();
+
+    if ((launchFlags&Intent.FLAG_ACTIVITY_FORWARD_RESULT) != 0
+            && sourceRecord != null) {
+        // Transfer the result target from the source activity to the new
+        // one being started, including any failures.
+        if (requestCode >= 0) {
+            return START_FORWARD_AND_REQUEST_CONFLICT;
+        }
+        resultRecord = sourceRecord.resultTo;
+        resultWho = sourceRecord.resultWho;
+        requestCode = sourceRecord.requestCode;
+        sourceRecord.resultTo = null;
+        if (resultRecord != null) {
+            resultRecord.removeResultsLocked(
+                sourceRecord, resultWho, requestCode);
+        }
+    }
+
+    if (err == START_SUCCESS && intent.getComponent() == null) {
+        // We couldn't find a class that can handle the given Intent.
+        // That's the end of that!
+        err = START_INTENT_NOT_RESOLVED;
+    }
+
+    if (err == START_SUCCESS && aInfo == null) {
+        // We couldn't find the specific class specified in the Intent.
+        // Also the end of the line.
+        err = START_CLASS_NOT_FOUND;
+    }
+
+    if (err != START_SUCCESS) {
+        if (resultRecord != null) {
+            sendActivityResultLocked(-1,
+                resultRecord, resultWho, requestCode,
+                Activity.RESULT_CANCELED, null);
+        }
+        mDismissKeyguardOnNextActivity = false;
+        return err;
+    }
+
+    final int perm = mService.checkComponentPermission(aInfo.permission, callingPid,
+            callingUid, aInfo.applicationInfo.uid, aInfo.exported);
+    if (perm != PackageManager.PERMISSION_GRANTED) {
+        if (resultRecord != null) {
+            sendActivityResultLocked(-1,
+                resultRecord, resultWho, requestCode,
+                Activity.RESULT_CANCELED, null);
+        }
+        mDismissKeyguardOnNextActivity = false;
+        String msg;
+        if (!aInfo.exported) {
+            msg = "Permission Denial: starting " + intent.toString()
+                    + " from " + callerApp + " (pid=" + callingPid
+                    + ", uid=" + callingUid + ")"
+                    + " not exported from uid " + aInfo.applicationInfo.uid;
+        } else {
+            msg = "Permission Denial: starting " + intent.toString()
+                    + " from " + callerApp + " (pid=" + callingPid
+                    + ", uid=" + callingUid + ")"
+                    + " requires " + aInfo.permission;
+        }
+        Slog.w(TAG, msg);
+        throw new SecurityException(msg);
+    }
+
+    if (mMainStack) {
+        if (mService.mController != null) {
+            boolean abort = false;
+            try {
+                // The Intent we give to the watcher has the extra data
+                // stripped off, since it can contain private information.
+                Intent watchIntent = intent.cloneFilter();
+                abort = !mService.mController.activityStarting(watchIntent,
+                        aInfo.applicationInfo.packageName);
+            } catch (RemoteException e) {
+                mService.mController = null;
+            }
+
+            if (abort) {
+                if (resultRecord != null) {
+                    sendActivityResultLocked(-1,
+                        resultRecord, resultWho, requestCode,
+                        Activity.RESULT_CANCELED, null);
+                }
+                // We pretend to the caller that it was really started, but
+                // they will just get a cancel result.
+                mDismissKeyguardOnNextActivity = false;
+                return START_SUCCESS;
+            }
+        }
+    }
+    
+    ActivityRecord r = new ActivityRecord(mService, this, callerApp, callingUid,
+            intent, resolvedType, aInfo, mService.mConfiguration,
+            resultRecord, resultWho, requestCode, componentSpecified);
+    if (outActivity != null) {
+        outActivity[0] = r;
+    }
+
+    if (mMainStack) {
+        if (mResumedActivity == null
+                || mResumedActivity.info.applicationInfo.uid != callingUid) {
+            if (!mService.checkAppSwitchAllowedLocked(callingPid, callingUid, "Activity start")) {
+                PendingActivityLaunch pal = new PendingActivityLaunch();
+                pal.r = r;
+                pal.sourceRecord = sourceRecord;
+                pal.grantedUriPermissions = grantedUriPermissions;
+                pal.grantedMode = grantedMode;
+                pal.onlyIfNeeded = onlyIfNeeded;
+                mService.mPendingActivityLaunches.add(pal);
+                mDismissKeyguardOnNextActivity = false;
+                return START_SWITCHES_CANCELED;
+            }
+        }
+    
+        if (mService.mDidAppSwitch) {
+            // This is the second allowed switch since we stopped switches,
+            // so now just generally allow switches.  Use case: user presses
+            // home (switches disabled, switch to home, mDidAppSwitch now true);
+            // user taps a home icon (coming from home so allowed, we hit here
+            // and now allow anyone to switch again).
+            mService.mAppSwitchesAllowedTime = 0;
+        } else {
+            mService.mDidAppSwitch = true;
+        }
+     
+        mService.doPendingActivityLaunchesLocked(false);
+    }
+    
+    err = startActivityUncheckedLocked(r, sourceRecord,
+            grantedUriPermissions, grantedMode, onlyIfNeeded, true);
+    if (mDismissKeyguardOnNextActivity && mPausingActivity == null) {
+        // Someone asked to have the keyguard dismissed on the next
+        // activity start, but we are not actually doing an activity
+        // switch...  just dismiss the keyguard now, because we
+        // probably want to see whatever is behind it.
+        mDismissKeyguardOnNextActivity = false;
+        mService.mWindowManager.dismissKeyguard();
+    }
+    return err;
+}
+```
+　　通过上面的代码可以看出来全部都是用来解析ActivityInfo和Intent等启动信息的，
+AMS如何知道要启动的activity是谁呢？就是通过intent，先解析Intent得到一些基本信息。然后根据这些结果生成Activityrecord，存放在活动栈里面。最终会生成一个ActivityRecord.在调用startActivityUncheckedLocked使用这个对象
+
+
+　　注意两个类：ApplicationThreadNative和ActivityManagerNative。。。
 **上面这段代码会调用ActivityThread内部类ApplicationThread里的scheduleLaunchActivity**
-这里省略了ActivityManagerService重要的一组过程
+
 
 ```java
 public final void scheduleLaunchActivity(Intent intent, IBinder token, int ident,
