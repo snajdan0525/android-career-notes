@@ -1,0 +1,17 @@
+ActivityManagerService对于FrameWork层的重要性不言而喻，Android的四大组件无一不与它打交道：
+
+startActivity最终调用了AMS的startActivity系列方法，实现了Activity的启动；Activity的生命周期回调，也在AMS中完成；
+startService,bindService最终调用到AMS的startService和bindService方法；
+动态广播的注册和接收在AMS中完成（静态广播在PMS中完成）
+getContentResolver最终从AMS的getContentProvider获取到ContentProvider
+而PMS则完成了诸如权限校捡(checkPermission,checkUidPermission)，Apk meta信息获取(getApplicationInfo等)，四大组件信息获取(query系列方法)等重要功能。
+
+
+
+
+不论读者是否知道，我们使用startActivity有两种形式：
+
+直接调用Context类的startActivity方法；这种方式启动的Activity没有Activity栈，因此不能以standard方式启动，必须加上FLAG_ACTIVITY_NEW_TASK这个Flag。
+调用被Activity类重载过的startActivity方法，通常在我们的Activity中直接调用这个方法就是这种形式；
+
+ActivityManagerNative实际上就是ActivityManagerService这个远程对象的Binder代理对象；每次需要与AMS打交道的时候，需要借助这个代理对象通过驱动进而完成IPC调用

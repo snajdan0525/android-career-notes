@@ -117,7 +117,7 @@ public ActivityResult execStartActivity(
 ```
 
 　　getDefault返回的是ActivityManagerProxy对象的引用是一个Binder对象，他能够使用ActivityManagerService服务，现在我们切入到AMS的startActivity代码中：
-
+ActivityManagerNative实际上就是ActivityManagerService这个远程对象的Binder代理对象；每次需要与AMS打交道的时候，需要借助这个代理对象通过驱动进而完成IPC调用
 ```java
 public final int startActivity(IApplicationThread caller,
         Intent intent, String resolvedType, Uri[] grantedUriPermissions,
