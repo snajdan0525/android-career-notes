@@ -454,7 +454,22 @@ public final void scheduleLaunchActivity(Intent intent, IBinder token, int ident
 	*/
 }
 ```
-
+进入sendMessage函数中：
+```java
+private void queueOrSendMessage(int what, Object obj, int arg1, int arg2) {
+    synchronized (this) {
+        if (DEBUG_MESSAGES) Slog.v(
+            TAG, "SCHEDULE " + what + " " + mH.codeToString(what)
+            + ": " + arg1 + " / " + obj);
+        Message msg = Message.obtain();
+        msg.what = what;
+        msg.obj = obj;
+        msg.arg1 = arg1;
+        msg.arg2 = arg2;
+        mH.sendMessage(msg);//这个mH是一个hook点
+    }
+}
+```
 对应的消息处理函数handlerMessage如下：
 
 ```java
