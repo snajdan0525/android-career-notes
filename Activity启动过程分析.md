@@ -831,4 +831,9 @@ public Instrumentation getInstrumentation()
 ```
 
 **可以看到mInstrumentation是ActivityThread的一个成员变量，不过，既然找到ActvityThread了，所有的问题都解决了，为什么，因为每个应用在运行时都只有一个ActivityThread，它用来代表主线程，它是单例的.**
-	
+　　
+
+
+　　这个ApplicationThread实际上是一个Binder对象，是App所在的进程与AMS所在进程system_server通信的桥梁；在Activity启动的过程中，App进程会频繁地与AMS进程进行通信：
+App进程会委托AMS进程完成Activity生命周期的管理以及任务栈的管理；这个通信过程AMS是Server端，App进程通过持有AMS的client代理ActivityManagerNative完成通信过程；
+AMS进程完成生命周期管理以及任务栈管理后，会把控制权交给App进程，让App进程完成Activity类对象的创建，以及生命周期回调；这个通信过程也是通过Binder完成的，App所在server端的Binder对象存在于ActivityThread的内部类ApplicationThread；AMS所在client通过持有IApplicationThread的代理对象完成对于App进程的通信。

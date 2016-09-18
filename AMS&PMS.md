@@ -15,3 +15,6 @@ getContentResolver最终从AMS的getContentProvider获取到ContentProvider
 调用被Activity类重载过的startActivity方法，通常在我们的Activity中直接调用这个方法就是这种形式；
 
 ActivityManagerNative实际上就是ActivityManagerService这个远程对象的Binder代理对象；每次需要与AMS打交道的时候，需要借助这个代理对象通过驱动进而完成IPC调用
+
+![](http://i.imgur.com/HXgrhSY.png)
+先从App进程调用startActivity；然后通过IPC调用进入系统进程system_server，完成Activity管理以及一些校检工作，最后又回到了APP进程完成真正的Activioty对象创建。
