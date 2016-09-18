@@ -1,0 +1,1 @@
+　　我们知道系统的各个远程service对象都是以Binder的形式存在的，而这些Binder有一个管理者，那就是ServiceManager；我们要Hook掉这些service，自然要从这个ServiceManager下手，不然星罗棋布的Binder广泛存在于系统的各个角落，要一个个找出来还真是大海捞针。
