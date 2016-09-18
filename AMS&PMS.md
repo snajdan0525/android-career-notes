@@ -18,3 +18,6 @@ ActivityManagerNative实际上就是ActivityManagerService这个远程对象的B
 
 ![](http://i.imgur.com/HXgrhSY.png)
 先从App进程调用startActivity；然后通过IPC调用进入系统进程system_server，完成Activity管理以及一些校检工作，最后又回到了APP进程完成真正的Activioty对象创建。
+由于这个检验过程是在AMS进程完成的，我们对system_server进程里面的操作无能为力，只有在我们APP进程里面执行的过程才是有可能被Hook掉的，也就是第一步和第三步；具体应该怎么办呢？
+
+既然需要一个显式声明的Activity，那就声明一个！可以在第一步假装启动一个已经在AndroidManifest.xml里面声明过的替身Activity，让这个Activity进入AMS进程接受检验；最后在第三步的时候换成我们真正需要启动的Activity；这样就成功欺骗了AMS进程，瞒天过海！
