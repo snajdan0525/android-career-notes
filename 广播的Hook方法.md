@@ -1,5 +1,6 @@
-动态注册的大致流程如下图，后续将逐个分步讲解
+　　动态注册的大致流程如下图，后续将逐个分步讲解
 ![](http://i.imgur.com/ga6VQQs.jpg)
+　　不论是静态广播还是动态广播，在使用之前都是需要注册的；动态广播的注册需要借助Context类的registerReceiver方法，而静态广播的注册直接在AndroidManifest.xml中声明即可；我们首先分析一下动态广播的注册过程。
 1.首先我们先看一下注册方法
 ```java
 IntentFilter intentFilter = new IntentFilter("com.chan.plugin.receiver");
@@ -13,8 +14,8 @@ public Intent registerReceiver(
     return mBase.registerReceiver(receiver, filter);
 }
 ```
-看到这里的mBase，应该会想到——关于Context的startActivity或者registerReceiver等method其实都是在ContextImpl中真正实现的。我们查看ContextImpl的代码：
-经过代码跟踪，我发现真正的逻辑实现是在registerReceiverInternal函数中
+　　看到这里的mBase，应该会想到——关于Context的startActivity或者registerReceiver等method其实都是在ContextImpl中真正实现的。我们查看ContextImpl的代码，经过代码跟踪，我发现真正的逻辑实现是在registerReceiverInternal函数中
+
 ```java
 private Intent registerReceiverInternal(BroadcastReceiver receiver,
         IntentFilter filter, String broadcastPermission,
@@ -48,6 +49,11 @@ private Intent registerReceiverInternal(BroadcastReceiver receiver,
     }
 }
 ```
+>　　System private API for dispatching intent broadcasts. This is given to the activity manager as part of registering for an intent broadcasts, and is called when it receives intents.
+　　这个类是通过AIDL工具生成的，它是一个Binder对象，因此可以用来跨进程传输；文档说的很清楚，它是用来进行广播分发的。
+
+　　由于广播的分发过程是在AMS中进行的，而AMS所在的进程和BroadcastReceiver所在的进程不一样，因此要把广播分发到BroadcastReceiver具体的进程需要进行跨进程通信，这个通信的载体就是IIntentReceiver类。其实这个类的作用跟 Activity生命周期管理 中提到的 IApplicationThread相同，都是App进程给AMS进程用来进行通信的对象。另外，IIntentReceiver是一个接口，从上述代码中可以看出，它的实现类为LoadedApk.ReceiverDispatcher。
+
 接下来进入到ActivityManagerNative的registerReceiver函数中
 
 ```java
