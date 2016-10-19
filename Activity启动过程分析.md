@@ -29,6 +29,9 @@ startActivityForResult(Intent intent, int requestCode, @Nullable Bundle options)
 public void startActivityForResult(Intent intent, int requestCode, @Nullable Bundle options) {
     if (mParent == null) {
         Instrumentation.ActivityResult ar =
+			//mMainThread是ActivityThread类型，代表了应用程序的主线程
+			//getApplication获取到ApplicationThread成员变量，这是一个binder对象
+			//ActivityManagerService会使用它来和ActivityThread来进行进程间通信。
             mInstrumentation.execStartActivity(
                 this, mMainThread.getApplicationThread(), mToken, this,
                 intent, requestCode, options);//这里调用了mInstrumentation的execStartActivity
