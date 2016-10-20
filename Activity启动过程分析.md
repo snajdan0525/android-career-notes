@@ -886,6 +886,9 @@ private Activity performLaunchActivity(ActivityClientRecord r, Intent customInte
     // System.out.println("##### [" + System.currentTimeMillis() + "] ActivityThread.performLaunchActivity(" + r + ")");
     ActivityInfo aInfo = r.activityInfo;
     if (r.packageInfo == null) {
+		/*
+		*当前要启动的activity的包对应的LoadedApk对象
+		*/
         r.packageInfo = getPackageInfo(aInfo.applicationInfo, r.compatInfo,
                 Context.CONTEXT_INCLUDE_CODE);
 		//packageInfo是一个LoadedApk类型的对象，他从一个HashMap中取出来，这个HashMap维护了LoadedApk和包名的关系一个包名对应一个Loadedapk(表示这个apk已经加载过了)
@@ -1033,7 +1036,8 @@ java.lang.ClassLoader cl = r.packageInfo.getClassLoader();
 public ClassLoader getClassLoader() {
     synchronized (this) {
         if (mClassLoader != null) {
-            return mClassLoader;
+            return mClassLoader;//如果这个包已经加载，则直接返回mClassLoader对象
+			
         }
 			String zip = mAppDir;
             String instrumentationAppDir =
