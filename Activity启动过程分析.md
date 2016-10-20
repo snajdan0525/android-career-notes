@@ -651,15 +651,16 @@ final int startActivityUncheckedLocked(ActivityRecord r,
     //Slog.i(TAG, "Given intent: " + r.intent);
     //Slog.i(TAG, "URI is: " + uri);
     //Slog.i(TAG, "To intent: " + intent2);
+
+    if (r.packageName != null) {
+        // If the activity being launched is the same as the one currently
+        // at the top, then we need to check if it should only be launched
+        // once.
 	 /*
 	*这段代码的逻辑是看一下，当前在堆栈顶端的Activity是否就是即将要启动的Activity，有些
 	*情况下，如果即将要启动的Activity就在堆栈的顶端，那么，就不会重新启动这个Activity的
 	*别一个实例了
 	*/
-    if (r.packageName != null) {
-        // If the activity being launched is the same as the one currently
-        // at the top, then we need to check if it should only be launched
-        // once.
         ActivityRecord top = topRunningNonDelayedActivityLocked(notTop);
         if (top != null && r.resultTo == null) {
             if (top.realActivity.equals(r.realActivity)) {
