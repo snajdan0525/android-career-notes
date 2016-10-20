@@ -700,6 +700,7 @@ final int startActivityUncheckedLocked(ActivityRecord r,
     boolean keepCurTransition = false;
 
     // Should this be considered a new task?
+	//执行到这里，我们知道，要在一个新的Task里面来启动这个Activity了，于是新创建一个Task
     if (r.resultTo == null && !addingToTask
             && (launchFlags&Intent.FLAG_ACTIVITY_NEW_TASK) != 0) {
         if (reuseTask == null) {
@@ -791,8 +792,6 @@ final int startActivityUncheckedLocked(ActivityRecord r,
     return START_SUCCESS;
 }
 ```
-
-
 　　注意两个类：ApplicationThreadNative和ActivityManagerNative。。。
 **上面这段代码会调用ActivityThread内部类ApplicationThread里的scheduleLaunchActivity**
 
