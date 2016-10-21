@@ -118,8 +118,24 @@ public ActivityResult execStartActivity(
 }
 ```
 ```java
+// ActivityManagerNative.getDefault()返回ActivityManagerService的远程接口
  int result = ActivityManagerNative.getDefault()
             .startActivity(whoThread, who.getBasePackageName()
+```
+```java
+private static final Singleton<IActivityManager> gDefault = new Singleton<IActivityManager>() {
+    protected IActivityManager create() {
+        IBinder b = ServiceManager.getService("activity");
+        if (false) {
+            Log.v("ActivityManager", "default service binder = " + b);
+        }
+        IActivityManager am = asInterface(b);
+        if (false) {
+            Log.v("ActivityManager", "default service = " + am);
+        }
+        return am;
+    }
+};
 ```
 　　getDefault返回的是ActivityManagerProxy对象的引用是一个Binder对象，他能够使用ActivityManagerService服务，现在我们切入到AMS的startActivity代码中：
 ActivityManagerNative实际上就是ActivityManagerService这个远程对象的Binder代理对象；每次需要与AMS打交道的时候，需要借助这个代理对象通过驱动进而完成IPC调用
@@ -363,7 +379,10 @@ final int startActivityLocked(IApplicationThread caller,
             }
         }
     }
-    
+    /*
+	*参数resultTo是Launcher这个Activity里面的一个Binder对象，通过它可以获得
+    *Launcher这个Activity的相关信息，保存在sourceRecord变量中。
+	*/
     ActivityRecord r = new ActivityRecord(mService, this, callerApp, callingUid,
             intent, resolvedType, aInfo, mService.mConfiguration,
             resultRecord, resultWho, requestCode, componentSpecified);
@@ -788,10 +807,223 @@ final int startActivityUncheckedLocked(ActivityRecord r,
         EventLog.writeEvent(EventLogTags.AM_CREATE_TASK, r.task.taskId);
     }
     logStartActivity(EventLogTags.AM_CREATE_ACTIVITY, r, r.task);
-    startActivityLocked(r, newTask, doResume, keepCurTransition);
+    startActivityLocked(r, newTask, doResume, keepCurTransition);//进入这个代码
     return START_SUCCESS;
 }
 ```
+　　传进来的参数r.resultTo为null，表示Launcher不需要等这个即将要启动的MainActivity
+的执行结果。
+　　接下来，startActivityUncheckedLocked这个函数进入了 startActivityLocked(r, newTask, doResume, keepCurTransition)，我们跟踪进去继续看这个函数：
+
+```java
+private final void startActivityLocked(ActivityRecord r, boolean newTask,
+        boolean doResume, boolean keepCurTransition) {
+    final int NH = mHistory.size();
+
+    int addPos = -1;
+    
+    if (!newTask) {
+        // If starting in an existing task, find where that is...
+        boolean startIt = true;
+        for (int i = NH-1; i >= 0; i--) {
+            ActivityRecord p = mHistory.get(i);
+            if (p.finishing) {
+                continue;
+            }
+            if (p.task == r.task) {
+                // Here it is!  Now, if this is not yet visible to the
+                // user, then just add it without starting; it will
+                // get started when the user navigates back to it.
+                addPos = i+1;
+                if (!startIt) {
+                    if (DEBUG_ADD_REMOVE) {
+                        RuntimeException here = new RuntimeException("here");
+                        here.fillInStackTrace();
+                        Slog.i(TAG, "Adding activity " + r + " to stack at " + addPos,
+                                here);
+                    }
+                    mHistory.add(addPos, r);
+                    r.putInHistory();
+                    mService.mWindowManager.addAppToken(addPos, r.appToken, r.task.taskId,
+                            r.info.screenOrientation, r.fullscreen);
+                    if (VALIDATE_TOKENS) {
+                        validateAppTokensLocked();
+                    }
+                    return;
+                }
+                break;
+            }
+            if (p.fullscreen) {
+                startIt = false;
+            }
+        }
+    }
+
+    // Place a new activity at top of stack, so it is next to interact
+    // with the user.
+    if (addPos < 0) {
+        addPos = NH;
+    }
+    
+    // If we are not placing the new activity frontmost, we do not want
+    // to deliver the onUserLeaving callback to the actual frontmost
+    // activity
+    if (addPos < NH) {
+        mUserLeaving = false;
+        if (DEBUG_USER_LEAVING) Slog.v(TAG, "startActivity() behind front, mUserLeaving=false");
+    }
+    
+    // Slot the activity into the history stack and proceed
+    if (DEBUG_ADD_REMOVE) {
+        RuntimeException here = new RuntimeException("here");
+        here.fillInStackTrace();
+        Slog.i(TAG, "Adding activity " + r + " to stack at " + addPos, here);
+    }
+    mHistory.add(addPos, r);
+    r.putInHistory();
+    r.frontOfTask = newTask;
+    if (NH > 0) {
+        // We want to show the starting preview window if we are
+        // switching to a new task, or the next activity's process is
+        // not currently running.
+        boolean showStartingIcon = newTask;
+        ProcessRecord proc = r.app;
+        if (proc == null) {
+            proc = mService.mProcessNames.get(r.processName, r.info.applicationInfo.uid);
+        }
+        if (proc == null || proc.thread == null) {
+            showStartingIcon = true;
+        }
+        if (DEBUG_TRANSITION) Slog.v(TAG,
+                "Prepare open transition: starting " + r);
+        if ((r.intent.getFlags()&Intent.FLAG_ACTIVITY_NO_ANIMATION) != 0) {
+            mService.mWindowManager.prepareAppTransition(
+                    WindowManagerPolicy.TRANSIT_NONE, keepCurTransition);
+            mNoAnimActivities.add(r);
+        } else if ((r.intent.getFlags()&Intent.FLAG_ACTIVITY_CLEAR_WHEN_TASK_RESET) != 0) {
+            mService.mWindowManager.prepareAppTransition(
+                    WindowManagerPolicy.TRANSIT_TASK_OPEN, keepCurTransition);
+            mNoAnimActivities.remove(r);
+        } else {
+            mService.mWindowManager.prepareAppTransition(newTask
+                    ? WindowManagerPolicy.TRANSIT_TASK_OPEN
+                    : WindowManagerPolicy.TRANSIT_ACTIVITY_OPEN, keepCurTransition);
+            mNoAnimActivities.remove(r);
+        }
+        mService.mWindowManager.addAppToken(
+                addPos, r.appToken, r.task.taskId, r.info.screenOrientation, r.fullscreen);
+        boolean doShow = true;
+        if (newTask) {
+            // Even though this activity is starting fresh, we still need
+            // to reset it to make sure we apply affinities to move any
+            // existing activities from other tasks in to it.
+            // If the caller has requested that the target task be
+            // reset, then do so.
+            if ((r.intent.getFlags()
+                    &Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED) != 0) {
+                resetTaskIfNeededLocked(r, r);
+                doShow = topRunningNonDelayedActivityLocked(null) == r;
+            }
+        }
+        if (SHOW_APP_STARTING_PREVIEW && doShow) {
+            // Figure out if we are transitioning from another activity that is
+            // "has the same starting icon" as the next one.  This allows the
+            // window manager to keep the previous window it had previously
+            // created, if it still had one.
+            ActivityRecord prev = mResumedActivity;
+            if (prev != null) {
+                // We don't want to reuse the previous starting preview if:
+                // (1) The current activity is in a different task.
+                if (prev.task != r.task) prev = null;
+                // (2) The current activity is already displayed.
+                else if (prev.nowVisible) prev = null;
+            }
+            mService.mWindowManager.setAppStartingWindow(
+                    r.appToken, r.packageName, r.theme,
+                    mService.compatibilityInfoForPackageLocked(
+                            r.info.applicationInfo), r.nonLocalizedLabel,
+                    r.labelRes, r.icon, r.windowFlags,
+                    prev != null ? prev.appToken : null, showStartingIcon);
+        }
+    } else {
+        // If this is the first activity, don't do any fancy animations,
+        // because there is nothing for it to animate on top of.
+        mService.mWindowManager.addAppToken(addPos, r.appToken, r.task.taskId,
+                r.info.screenOrientation, r.fullscreen);
+    }
+    if (VALIDATE_TOKENS) {
+        validateAppTokensLocked();
+    }
+
+    if (doResume) {
+        resumeTopActivityLocked(null);
+	//这里是重点，接下来将进入这个函数去暂停上一个activity
+    }
+}
+```
+　　接下来进入resumeTopActivityLocked 
+```java 
+/** 
+* Ensure that the top activity in the stack is resumed. 
+* 
+* @param prev The previously resumed activity, for when in the process 
+* of pausing; can be null to call from elsewhere. 
+* 
+* @return Returns true if something is being resumed, or false if 
+* nothing happened. 
+*/  
+final boolean resumeTopActivityLocked(ActivityRecord prev) {  
+    // Find the first activity that is not finishing.  
+    ActivityRecord next = topRunningActivityLocked(null);  
+
+    // Remember how we'll process this pause/resume situation, and ensure  
+    // that the state is reset however we wind up proceeding.  
+    final boolean userLeaving = mUserLeaving;  
+    mUserLeaving = false;  
+
+    if (next == null) {  
+        ......  
+    }  
+
+    next.delayedResume = false;  
+
+    // If the top activity is the resumed one, nothing to do.  
+    if (mResumedActivity == next && next.state == ActivityState.RESUMED) {  
+        ......  
+    }  
+
+    // If we are sleeping, and there is no resumed activity, and the top  
+    // activity is paused, well that is the state we want.  
+    if ((mService.mSleeping || mService.mShuttingDown)  
+        && mLastPausedActivity == next && next.state == ActivityState.PAUSED) {  
+        ......  
+    }  
+
+    ......  
+
+    // If we are currently pausing an activity, then don't do anything  
+    // until that is done.  
+    if (mPausingActivity != null) {  
+        ......  
+    }  
+
+    ......  
+
+    // We need to start pausing the current activity so the top one  
+    // can be resumed...  
+    if (mResumedActivity != null) {  
+        ......  
+        startPausingLocked(userLeaving, false);  
+        return true;  
+    }  
+
+    ......  
+}  
+......  
+}  
+```
+
+
 　　注意两个类：ApplicationThreadNative和ActivityManagerNative。。。
 **上面这段代码会调用ActivityThread内部类ApplicationThread里的scheduleLaunchActivity**
 
