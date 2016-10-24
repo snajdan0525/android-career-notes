@@ -111,6 +111,14 @@ public ActivityResult execStartActivity(
                     intent.resolveTypeIfNeeded(who.getContentResolver()),
                     token, target != null ? target.mEmbeddedID : null,
                     requestCode, 0, null, options);
+		/*
+		 *ActivityStack中的startActivityLocked函数会对将要启动的Activity是否已经
+		 *注册进行校验,如果没有校验startActivityLocked返回
+         *ActivityManager.START_CLASS_NOT_FOUND
+		 *并且在checkStartActivityResult抛出异常
+		 *即：校验过程发生在AMS所在的进程system_server中，所以我们的"替换"一定是在
+		 *进入AMS之前
+		 */
         checkStartActivityResult(result, intent);
     } catch (RemoteException e) {
     }
@@ -315,7 +323,7 @@ final int startActivityLocked(IApplicationThread caller,
     if (err == START_SUCCESS && aInfo == null) {
         // We couldn't find the specific class specified in the Intent.
         // Also the end of the line.
-        err = START_CLASS_NOT_FOUND;
+        err = START_CLASS_NOT_FOUND;//Manifest.xml中未注册Activity报错
     }
 
     if (err != START_SUCCESS) {
@@ -1162,6 +1170,12 @@ private Activity performLaunchActivity(ActivityClientRecord r, Intent customInte
     }
 
     try {
+		/*
+		 *如果这是个从Launcher启动的应用程序的MainActivity，则application还没创建
+		 *即第一次启动时候要创建一个通过makeApplication创建application
+		 *如果是应用程序已经启动的情况下，此处Application已经创建了，则
+         *makeApplication不会创建新的application
+		 */
         Application app = r.packageInfo.makeApplication(false, mInstrumentation);
 
         if (localLOGV) Slog.v(TAG, "Performing launch of " + r);
