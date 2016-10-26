@@ -20,12 +20,12 @@
 - 从mPackages中取出之前创建的LoadedApk，再次调用它的makeApplication()方法。这次调用和上次不同，由于Application已经创建过了所以会直接拿出来用，另外传入的第二个参数instrumentation不为空，因此会调用Application的onCreate()方法。
  
 　　说了这么多，都只是Android默认的运行流程。那么DroidPlugin是如何让插件被加载和启动的呢？先上一张图描述一下概况，以免后面分析代码的时候会晕。我们和上一张图对比一下看主要区别在哪里：
-
-其实说穿了也很简单，我们不是在PluginCallback里hook了handleLaunchActivity()方法吗？那就在这个hook里手动加载一下插件apk，创建LoadedApk对象并调用其makeApplication()方法，创建Application并调用其onCreate()。在这一切都做完以后，继续往下执行，调用宿主Application的onCreate()。
+![](http://i.imgur.com/UkCfmIM.png)
+　　其实说穿了也很简单，我们不是在PluginCallback里hook了handleLaunchActivity()方法吗？那就在这个hook里手动加载一下插件apk，创建LoadedApk对象并调用其makeApplication()方法，创建Application并调用其onCreate()。在这一切都做完以后，继续往下执行，调用宿主Application的onCreate()。
 也就是说，其实创建了两个Application对象，先调用插件Application的onCreate()，再调用宿主Application的onCreate()。这样就回答了文章开头提出的第一个问题了：在宿主Application的onCreate()里，我们是安装了所有hook的，这样插件apk就也被hook住啦~~
 思路已经清楚了，下面分析代码，重点看一下PluginProcessManager的2个关键API：preLoadApk()和preMakeApplication()。现在明白为什么这两个方法要带“pre”前缀了，因为新创建的Application确实是被先调用的呀。
 preLoadApk()大家可能还有印象，是在PluginCallback里曾经露过脸，看一下具体代码：
-[java] view plain copy 
+```java
 public static void preLoadApk(Context hostContext, ComponentInfo pluginInfo) throws IOException, NoSuchMethodException, IllegalAccessException, InvocationTargetException, PackageManager.NameNotFoundException, ClassNotFoundException {  
     boolean found = false;  
     synchronized (sPluginLoadedApkCache) {  
@@ -53,13 +53,14 @@ public static void preLoadApk(Context hostContext, ComponentInfo pluginInfo) thr
         PluginProcessManager.preMakeApplication(hostContext, pluginInfo);  
     }  
 }  
+```
 根据代码的功能大致分为3段：
 1. 判断ActivityThread的mPackages字段是否包含插件包，如果不包含，则调用getPackageInfoNoCheck()加载apk，获取LoadedApk对象。
 mPackages是ActivityThread里的一个map：key是包名，value是对应的LoadedApk对象。getPackageInfoNoCheck()会创建一个新的LoadedApk对象，里面包含了apk的所有信息，有了这些信息以后就可以启动插件程序了。这个对象会被放进mPackages中待日后使用。
 2. 替换掉LoadedApk对象的mClassLoader字段
 LoadedApk的class loader最终会被传给Instrumentation，用来加载插件apk中的类。默认的class loader是一个PathClassLoader，这里替换成了PluginClassLoader，目的和之前一样是为了解决奇酷手机support V4库加载的问题。
 3. 调用preMakeApplication()，下面节选了preMakeApplication()的代码：
-[java] view plain copy 
+```java
 private static void preMakeApplication(Context hostContext, ComponentInfo pluginInfo) {  
     try {  
         final Object loadedApk = sPluginLoadedApkCache.get(pluginInfo.packageName);  
@@ -72,31 +73,35 @@ private static void preMakeApplication(Context hostContext, ComponentInfo plugin
         MethodUtils.invokeMethod(loadedApk, "makeApplication", false, ActivityThreadCompat.getInstrumentation());  
         ... ...  
 }  
+```
 首先判断LoadedApk的mApplication字段是否为空，这段感觉有点多余，因为makeApplication()方法的开头也会先判断一下的。然后就是调用makeApplication()方法啦，这样插件apk的Application就被创建出来了，onCreate()也会被执行。 
 二、插件进程die是如何被检测到的？
 上面分析过了，插件进程启动的时候，也会创建宿主Application并调用其onCreate()，因此会调用到PluginHelper的applicationOnCreate()方法。
-[java] view plain copy 
+```java
 public void applicationOnCreate(final Context baseContext) {  
     mContext = baseContext;  
     initPlugin(baseContext);  
-}  
+} 
+``` 
 在initPlugin()里执行了下面两个步骤：
 • 添加一个ServiceConnection（PluginHelper实现了ServiceConnection接口）
 • 调用PluginManager的init()方法去连接PluginManagerService
-[java] view plain copy 
+```java
 private void initPlugin(Context baseContext) {  
         ... ...  
     PluginManager.getInstance().addServiceConnection(PluginHelper.this);  
     PluginManager.getInstance().init(baseContext);  
         ... ...  
-}  
-[java] view plain copy
+}
+```
+```java
 // PluginManager.java  
 public void init(Context hostContext) {  
     mHostContext = hostContext;  
     connectToService();  
 }  
-看一下connectToService()：
+```
+```java
 [java] view plain copy 
 public void connectToService() {  
     if (mPluginManager == null) {  
@@ -110,8 +115,9 @@ public void connectToService() {
         }  
     }  
 }  
+```
 首先startService()，然后再bindService()，这样即使解绑了，服务还是可以继续保持运行。连接上服务以后，会调用PluginManager的onServiceConnected()，这一步比较关键：
-[java] view plain copy 
+```java
 public void onServiceConnected(final ComponentName componentName, final IBinder iBinder) {  
     ... ...  
     mPluginManager.waitForReady();  
@@ -123,11 +129,13 @@ public void onServiceConnected(final ComponentName componentName, final IBinder 
     });  
     ... ...  
 }  
+```
 看到没，这里注册了一个ApplicationCallback，这是一个自定义的AIDL远程调用接口，会调用到远端的IPluginManagerImpl，进而调用进BaseActivityManagerService：
-[java] view plain copy
+```java
 public boolean registerApplicationCallback(int callingPid, int callingUid, IApplicationCallback callback) {  
     return mRemoteCallbackList.register(callback, new ProcessCookie(callingPid, callingUid));  
-}  
+} 
+```
 注意，这可不是一个普通的list哦，这是一个RemoteCallbackList，在binder对端死掉的时候，会收到一个通知，这样就能知道插件进程是死是活了，具体的处理放到onProcessDied()里去实现。看一下这个类的实现：
 [java] view plain copy
 private class MyRemoteCallbackList extends RemoteCallbackList<IApplicationCallback> {  
