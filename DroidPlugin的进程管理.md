@@ -75,7 +75,7 @@ private static void preMakeApplication(Context hostContext, ComponentInfo plugin
 }  
 ```
 首先判断LoadedApk的mApplication字段是否为空，这段感觉有点多余，因为makeApplication()方法的开头也会先判断一下的。然后就是调用makeApplication()方法啦，这样插件apk的Application就被创建出来了，onCreate()也会被执行。 
-二、插件进程die是如何被检测到的？
+## 二、插件进程die是如何被检测到的？ ##
 上面分析过了，插件进程启动的时候，也会创建宿主Application并调用其onCreate()，因此会调用到PluginHelper的applicationOnCreate()方法。
 ```java
 public void applicationOnCreate(final Context baseContext) {  
@@ -137,7 +137,7 @@ public boolean registerApplicationCallback(int callingPid, int callingUid, IAppl
 } 
 ```
 注意，这可不是一个普通的list哦，这是一个RemoteCallbackList，在binder对端死掉的时候，会收到一个通知，这样就能知道插件进程是死是活了，具体的处理放到onProcessDied()里去实现。看一下这个类的实现：
-[java] view plain copy
+```java
 private class MyRemoteCallbackList extends RemoteCallbackList<IApplicationCallback> {  
     @Override  
     public void onCallbackDied(IApplicationCallback callback, Object cookie) {  
@@ -148,8 +148,9 @@ private class MyRemoteCallbackList extends RemoteCallbackList<IApplicationCallba
         }  
     }  
 }  
+```
 最后我们看一下RemoteCallbackList的register()方法，在注册callback的时候会调用binder的linkToDeath，这样当对端死掉的时候就能收到通知啦，就是这么简单：
-[java] view plain copy 
+```java
 public boolean register(E callback, Object cookie) {  
     synchronized (mCallbacks) {  
         if (mKilled) {  
@@ -166,9 +167,11 @@ public boolean register(E callback, Object cookie) {
         }  
     }  
 }  
+```
 至此，插件进程die如何被检测到的问题就搞清楚了，如下图：
+![](http://i.imgur.com/dZDfkaz.png)
 
-三、插件进程是如何被管理的？
+## 三、插件进程是如何被管理的？ ##
 目前DroidPlugin的进程管理还是比较粗糙的，没有考虑task affinity，策略也比较简单粗暴。
 主要逻辑实现在MyActivityManagerService里，代码就不贴了比较简单，文字总结一下。
 1. MyActivityManagerService里维护了两个进程列表：
