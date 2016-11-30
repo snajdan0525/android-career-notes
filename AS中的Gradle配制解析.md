@@ -1,7 +1,12 @@
 
 
-## 依赖管理 ##
+## Gradle依赖管理 ##
 　支持多方式依赖管理：包括从 maven 远程仓库、 nexus 私服、 ivy 仓库以及本地文件系统的 jars 或者 dirs 。
+
+**新项目**
+----------
+![](http://i.imgur.com/1Abthrg.png)
+　一个新的项目中就包含这些文件,build 是两个,一个是项目本身的,一个是 APP Model 的.另外在 APP 中可以看见有一个 manifest 文件夹，这意味着着可以有多 AndroidManifest 文件。另外值得一说的是 gradle.properties 文件也是含有两个，但是却是一个是全局，一个是项目的；这与上面的 Build 文件有何区别？区别在于全局文件存在于 C:Users用户名.gradle文件夹中，该文件有可能没有，需要自己创建，创建后所有项目都将具有访问权限，在该文件中一般保存的是项目的一些变量等，如果是无关紧要的变量可以保存在项目文件中，如果是用户名密码等变量则需要保存在全局文件中。
 
 **settings.gradle**
 ----------
@@ -9,7 +14,7 @@
 
 　在你的项目中如果有多个 Model 存在的时候，就可以选择包含哪些进行编译。
 
-**build.gradle**
+**项目本身的build.gradle**
 ----------
 ![](http://i.imgur.com/lN7blzA.png)
 　两个大的包围一看就明了,一个是为编译准备的,一个是为所有项目准备的。其中,Repositories 配置的是依赖管理的服务器。默认是 jcenter() 你可以添加其他，多个之间不干扰。
@@ -33,3 +38,16 @@
 >compile "com.android.support:appcompat-v7:25.0.0"
 
 　至于这句话也就是依赖一个远程的库了，这个库的作用是在低版本中使用一定的 Material Design 的东西。
+
+**gradle文件中的android{...}部分**
+
+    compileSdkVersion 25
+    buildToolsVersion "25.0.0"
+　这两个就是指定的编译SDK以及编辑工具版本，具体可以打开SDK Manager看看。
+>     defaultConfig {
+>         applicationId "io.github.snalopainen"
+>         minSdkVersion 15
+>         targetSdkVersion 25
+>         versionCode 2
+>         versionName "1.0.1"
+>     }
