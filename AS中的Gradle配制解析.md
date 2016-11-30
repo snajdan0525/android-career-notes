@@ -32,8 +32,14 @@
 > apply plugin: 'com.android.library'
 
 **dependencies：**
-　这个也就是所谓的依赖了，在这里不光可以进行远程依赖（上面所说的方法）,也可以本地依赖： compile fileTree(dir:'libs',include:['*.jar'])这句话也就是说编译时依赖libs文件夹下的所有jar文件。
-　compile project(':library')这也是依赖，不过依赖的是一个model，前面说了在一个项目中可以有多个model，这句话的意思也就是依赖一个本项目中。名称为library的model库。
+　这个也就是所谓的依赖了，在这里不光可以进行远程依赖（上面所说的方法）,也可以本地依赖： 
+> compile fileTree(dir:'libs',include:['*.jar'])
+
+这句话也就是说编译时依赖libs文件夹下的所有jar文件。
+
+> 　compile project(':library')
+
+这也是依赖，不过依赖的是一个model，前面说了在一个项目中可以有多个model，这句话的意思也就是依赖一个本项目中。名称为library的model库。
 
 >compile "com.android.support:appcompat-v7:25.0.0"
 
