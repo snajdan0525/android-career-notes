@@ -57,3 +57,29 @@
 >         versionCode 2
 >         versionName "1.0.1"
 >     }
+
+
+**自定义Task**
+----------
+
+　下面是一个自定义的Task：
+```groovy
+class HelloWorldTask extends DefaultTask {
+    @Optional
+    String message = 'I am davenkin'
+
+    @TaskAction
+    def hello(){
+        println "hello world $message"
+    }
+}
+
+task hello(type:HelloWorldTask)
+
+
+task hello1(type:HelloWorldTask){
+   message ="I am a programmer"
+}
+
+```
+　在上例中,我们定义了一个名为HelloWorldTask的Task,它需要继承自DefaultTask,它的作用是向命令行输出一个字符串。@TaskAction表示该Task要执行的动作,即在调用该Task时，hello()方法将被执行。另外，message被标记为@Optional，表示在配置该Task时，message是可选的。在定义好HelloWorldTask后，我们创建了两个Task实例，第一个hello使用了默认的message值，而第二个hello1在创建时重新设置了message的值。
