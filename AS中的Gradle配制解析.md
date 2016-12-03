@@ -83,3 +83,47 @@ task hello1(type:HelloWorldTask){
 
 ```
 　在上例中,我们定义了一个名为HelloWorldTask的Task,它需要继承自DefaultTask,它的作用是向命令行输出一个字符串。@TaskAction表示该Task要执行的动作,即在调用该Task时，hello()方法将被执行。另外，message被标记为@Optional，表示在配置该Task时，message是可选的。在定义好HelloWorldTask后，我们创建了两个Task实例，第一个hello使用了默认的message值，而第二个hello1在创建时重新设置了message的值。
+
+**单独的项目中自定义Task类型**
+
+----------
+　创建另外一个项目，将buildSrc目录下的内容考到新建项目中，由于该项目定义Task的文件是用groovy写的，因此我们需要在该项目的build.gradle文件中引入groovy Plugin。另外，由于该项目的输出需要被其他项目所使用，因此我们还需要将其上传到repository中，在本例中，我们将该项目生成的包含了Task定义的jar文件上传到了本地的文件系统中。最终的build.gradle文件如下：
+```groovy
+apply plugin: 'groovy'
+apply plugin: 'maven'
+version = '1.0'
+group = 'davenkin'
+archivesBaseName = 'hellotask'
+
+repositories.mavenCentral()
+
+dependencies {
+    compile gradleApi()
+    groovy localGroovy()
+}
+uploadArchives {
+    repositories.mavenDeployer {
+        repository(url: 'file:../lib')
+    }
+}
+```
+
+　执行“gradle uploadArchives”，所生成的jar文件将被上传到上级目录的lib(../lib)文件夹中。
+
+　在使用该HelloWorldTask时，客户端的build.gradle文件可以做以下配置：
+```groovy
+buildscript {
+    repositories {
+        maven {
+            url 'file:../lib'
+        }
+
+    }
+
+    dependencies {
+        classpath group: 'davenkin', name: 'hellotask', version: '1.0'
+    }
+}
+task hello(type: davenkin.HelloWorldTask)
+```
+　首先，我们需要告诉Gradle到何处去取得依赖，即配置repository。另外，我们需要声明对HelloWorldTask的依赖，该依赖用于当前build文件。之后，对hello的创建与（2）中一样。
