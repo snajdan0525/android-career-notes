@@ -158,6 +158,7 @@ dependencies {
 ```groovy
 dependencies {
    compile 'org.slf4j:slf4j-log4j12:1.7.2'
+   compile project(':ProjectB')
    testCompile 'junit:junit:4.8.2'
 }
 ```
