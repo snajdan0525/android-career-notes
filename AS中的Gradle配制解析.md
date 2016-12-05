@@ -127,3 +127,39 @@ buildscript {
 task hello(type: davenkin.HelloWorldTask)
 ```
 　首先，我们需要告诉Gradle到何处去取得依赖，即配置repository。另外，我们需要声明对HelloWorldTask的依赖，该依赖用于当前build文件。之后，对hello的创建与（2）中一样。
+
+**Gradle-依赖管理**
+----------
+　一个Java项目总会依赖于第三方，要么是一个第三方类库，比如Apache commons；要么是你自己开发的另外一个Java项目，比如你的web项目依赖于另一个核心的业务项目。通常来说，这种依赖的表示形式都是将第三方的Jar文件放在自己项目的classpath下，要么是编译时的classpath，要么是运行时的classpath。
+　在声明对第三方类库的依赖时，我们需要告诉Gradle在什么地方去获取这些依赖，即配置Gradle的Repository。在配置好依赖之后，Gradle会自动地下载这些依赖到本地。Gradle可以使用Maven和Ivy的Repository，同时它还可以使用本地文件系统作为Repository。
+　要配置Maven的Repository是非常简单的，我们只需要在build.gradle文件中加入以下代码即可：
+```groovy
+repositories {
+   mavenCentral()
+}
+```
+　Gradle将对依赖进行分组，比如编译Java时使用的是这组依赖，运行Java时又可以使用另一组依赖。**每一组依赖称为一个Configuration，在声明依赖时，我们实际上是在设置不同的Configuration**。值得一提的是，将依赖称为Configuration并不是一个好的名字，更好的应该叫作诸如“DependencyGroup”之类的。但是，习惯了就好的。
+
+
+要定义一个Configuration，我们可以通过以下方式完成：
+```groovy
+configurations {
+   myDependency
+}
+```
+
+　以上只是定义了一个名为myDependency的Configuration，我们并未向其中加入依赖。我们可以通过dependencies()方法向myDependency中加入实际的依赖项：
+```groovy
+dependencies {
+   myDependency 'org.apache.commons:commons-lang3:3.0'
+}
+```
+　下面，我们来看一个Java项目，该项目依赖于SLF4J，而在测试时依赖于Junit。在声明依赖时，我们可以通过以下方式进行设置：
+```groovy
+dependencies {
+   compile 'org.slf4j:slf4j-log4j12:1.7.2'
+   testCompile 'junit:junit:4.8.2'
+}
+```
+　我们并没有定义名为compile和testCompile的Configuration，这是这么回事呢？
+**原因在于,java Plugin会自动定义compile和testCompile,分别用于编译Java源文件和编译Java测试源文件。另外，java Plugin还定义了runtime和testRuntime这两个Configuration，分别用于在程序运行和测试运行时加入所配置的依赖。**
