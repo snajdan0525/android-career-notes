@@ -164,3 +164,21 @@ dependencies {
 ```
 　我们并没有定义名为compile和testCompile的Configuration，这是这么回事呢？
 **原因在于,java Plugin会自动定义compile和testCompile,分别用于编译Java源文件和编译Java测试源文件。另外，java Plugin还定义了runtime和testRuntime这两个Configuration，分别用于在程序运行和测试运行时加入所配置的依赖。**
+
+**excude语法**
+
+----------
+  exclude group:
+　排除部分依赖：
+```groovy
+compile ('com.ali.reactandroid:react_android:0.8.0-SNAPSHOT'){
+	transitive = true
+	exclude group: 'com.android.support', module: 'support-v4'
+	exclude group: 'com.android.support', module: 'support-v7'
+}
+
+/*对本地的project进行exclude，只是需要在project 外面再包一层*/
+compile(project(':react-native-custom-module')) {
+    exclude group: 'com.facebook.react', module: 'react-native'
+}
+```
