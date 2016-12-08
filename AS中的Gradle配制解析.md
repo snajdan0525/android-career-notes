@@ -17,16 +17,18 @@
 **项目本身的build.gradle**
 ----------
 ![](http://i.imgur.com/lN7blzA.png)
-　两个大的包围一看就明了,一个是为编译准备的,一个是为所有项目准备的。其中,Repositories 配置的是依赖管理的服务器。默认是 jcenter() 你可以添加其他，多个之间不干扰。
-　dependencies这个也是依赖管理的东西，上面是指定依赖管理的服务器，这个就是具体依赖什么库。
+　两个大的包围一看就明了,一个是为编译准备的,一个是为所有项目准备的。其中,Repositories 配置的是依赖管理的服务器，构建过程依赖的仓库。默认是 jcenter() 你可以添加其他，多个之间不干扰。
+　dependencies这个也是依赖管理的东西即构建过程依赖的库，上面是指定依赖管理的服务器，这个就是具体依赖什么库。
 　联合起来也就是,依赖jcenter()服务中的 gradle 库,其包名是：“com.android.tools.build”,版本是：2.2.2 版本
+　allprojects这里面配置整个项目依赖的仓库,这样每个module就不用配置仓库了
+　buildscript中的仓库是gradle脚本自身需要的资源，而allprojects下的仓库是项目所有模块需要的资源。
 
 **app modle的build.gradle**
 ----------
 
 ![](http://i.imgur.com/g4jrC8s.png)
-
->apply plugin: 'com.android.application'
+![](http://i.imgur.com/dtcbGGB.png)
+>applply ugin: 'com.android.application'
 
 　表示的是添加插件，其是可以理解为该 model 为一个 com.android.application 程序，也就是应用程序，如果你的 Model 是一个库，那么自然也就是
 > apply plugin: 'com.android.library'
@@ -58,6 +60,11 @@
 >         versionName "1.0.1"
 >     }
 
+　buildTypes结点很重要，这里可以配置构建的版本的一些参数，默认有两个构建版本release/debug，当然你可以自定义一个构建版本，比如叫foo,然后通过gradlew assembleFoo就可以生成对应的apk了。
+
+　buildTypes里还有很多可配置项，下面列举了所有可配项以及debug/release版本的默认值：
+
+![](http://i.imgur.com/Ls5qxcw.png)
 
 **自定义Task**
 ----------
