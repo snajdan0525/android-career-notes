@@ -25,6 +25,7 @@ return (T) Proxy.newProxyInstance(service.getClassLoader(), new Class<?>[] { ser
       }
     });
 }
+	此时，invoke的返回必然是一个Call，Call是Retrofit中对一个Request的抽象,由此，大家应该不难想象到loadMethodHandler(method).invoke(args); 这句代码应该就是去解析接口中传进来的注解，并生成一个OkHttpClient中对应的请求，这样我们调用searchResultsCall时，调用OkHttpClient走网络即可。确实，Retrofit的主旋律的确就是这样滴。
       //proxy对象就是你在外面调用方法的resetApi对象
       //method是RestApi中的函数定义，
       //据此，我们可以获取定义在函数和参数上的注解，比如@GET和注解中的参数
