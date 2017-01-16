@@ -32,3 +32,6 @@ mainViewModel.isShowDialog.addOnPropertyChangedCallback(new android.databinding.
  ...
 }
 ```
+这段代码的总结：
+　
+　简单的说你可以对任意的ObservableField做监听，然后根据数据的变化做相应UI的改变，业务层ViewModel 只要根据业务处理数据就行，以数据来驱动UI。
