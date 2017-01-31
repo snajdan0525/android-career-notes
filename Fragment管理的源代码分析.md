@@ -533,4 +533,7 @@ void moveToState(Fragment f, int newState, int transit, int transitionStyle) {
     f.mState = newState;
 }
 ```
-![](http://i.imgur.com/nz5Nfx9.jpg)
+本文这里不多说了，这个地方有点多，反正就是状态跃迁，我准备重新开一篇文章重新来说这个moveState....
+![](http://i.imgur.com/pRWsWOI.png)
+
+现在来叔叔addFragment这个玩意儿：
