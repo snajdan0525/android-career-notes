@@ -177,20 +177,24 @@ public void run() {
     bumpBackStackNesting(1);
 
     Op op = mHead;
+	//循环遍历存储在BackStackRecord中的记录了操作序列的双向链表。
     while (op != null) {
         switch (op.cmd) {
+//根据不同的cmd类型进行不同的处理
             case OP_ADD: {
                 Fragment f = op.fragment;
                 f.mNextAnim = op.enterAnim;
-                mManager.addFragment(f, false);
+                mManager.addFragment(f, false);//这里是个重点
             } break;
             case OP_REPLACE: {
                 Fragment f = op.fragment;
                 if (mManager.mAdded != null) {
+					//循环遍历所有已经添加过的Fragment
                     for (int i=0; i<mManager.mAdded.size(); i++) {
                         Fragment old = mManager.mAdded.get(i);
                         if (FragmentManagerImpl.DEBUG) Log.v(TAG,
                                 "OP_REPLACE: adding=" + f + " old=" + old);
+						//如果ContainerId 是一样的
                         if (old.mContainerId == f.mContainerId) {
                             if (op.removed == null) {
                                 op.removed = new ArrayList<Fragment>();
@@ -207,7 +211,7 @@ public void run() {
                     }
                 }
                 f.mNextAnim = op.enterAnim;
-                mManager.addFragment(f, false);
+                mManager.addFragment(f, false);//将Fragment添加到mManager中进行管理
             } break;
             case OP_REMOVE: {
                 Fragment f = op.fragment;
@@ -241,7 +245,8 @@ public void run() {
 
         op = op.next;
     }
-
+	
+	//循环操作完所有的操作序列后调用这个函数
     mManager.moveToState(mManager.mCurState, mTransition,
             mTransitionStyle, true);
 
@@ -250,3 +255,282 @@ public void run() {
     }
 }
 ```
+
+　　接下来就是Fragment的状态迁移函数moveToState，我们先看状态迁移后看addFragment removeFragment这些函数
+```java
+void moveToState(Fragment f, int newState, int transit, int transitionStyle) {
+    if (!f.mAdded && newState > Fragment.CREATED) {
+        newState = Fragment.CREATED;//如果这个Fragment还没有被add,则修改newState为Created即onCreate()状态。
+    }
+    if (f.mRemoving && newState > f.mState) {
+        // While removing a fragment, we can't change it to a higher state.
+        newState = f.mState;//这个不难理解
+    }
+    // Defer start if requested; don't allow it to move to STARTED or higher
+    // if it's not already started.
+    if (f.mDeferStart && f.mState < Fragment.STARTED && newState > Fragment.STOPPED) {
+        newState = Fragment.STOPPED;
+    }
+    if (f.mState < newState) {
+        // For fragments that are created from a layout, when restoring from
+        // state we don't want to allow them to be created until they are
+        // being reloaded from the layout.
+        if (f.mFromLayout && !f.mInLayout) {
+            return;
+        }
+        if (f.mAnimatingAway != null) {
+            // The fragment is currently being animated...  but!  Now we
+            // want to move our state back up.  Give up on waiting for the
+            // animation, move to whatever the final state should be once
+            // the animation is done, and then we can proceed from there.
+            f.mAnimatingAway = null;
+            moveToState(f, f.mStateAfterAnimating, 0, 0);
+        }
+        switch (f.mState) {
+            case Fragment.INITIALIZING:
+                if (DEBUG) Log.v(TAG, "moveto CREATED: " + f);
+                if (f.mSavedFragmentState != null) {
+                    f.mSavedViewState = f.mSavedFragmentState.getSparseParcelableArray(
+                            FragmentManagerImpl.VIEW_STATE_TAG);
+                    f.mTarget = getFragment(f.mSavedFragmentState,
+                            FragmentManagerImpl.TARGET_STATE_TAG);
+                    if (f.mTarget != null) {
+                        f.mTargetRequestCode = f.mSavedFragmentState.getInt(
+                                FragmentManagerImpl.TARGET_REQUEST_CODE_STATE_TAG, 0);
+                    }
+                    f.mUserVisibleHint = f.mSavedFragmentState.getBoolean(
+                            FragmentManagerImpl.USER_VISIBLE_HINT_TAG, true);
+                    if (!f.mUserVisibleHint) {
+                        f.mDeferStart = true;
+                        if (newState > Fragment.STOPPED) {
+                            newState = Fragment.STOPPED;
+                        }
+                    }
+                }
+                f.mActivity = mActivity;
+                f.mFragmentManager = mActivity.mFragments;
+                f.mCalled = false;
+                f.onAttach(mActivity);
+                if (!f.mCalled) {
+                    throw new SuperNotCalledException("Fragment " + f
+                            + " did not call through to super.onAttach()");
+                }
+                mActivity.onAttachFragment(f);
+                
+                if (!f.mRetaining) {
+                    f.mCalled = false;
+                    f.onCreate(f.mSavedFragmentState);
+                    if (!f.mCalled) {
+                        throw new SuperNotCalledException("Fragment " + f
+                                + " did not call through to super.onCreate()");
+                    }
+                }
+                f.mRetaining = false;
+                if (f.mFromLayout) {
+                    // For fragments that are part of the content view
+                    // layout, we need to instantiate the view immediately
+                    // and the inflater will take care of adding it.
+                    f.mView = f.onCreateView(f.getLayoutInflater(f.mSavedFragmentState),
+                            null, f.mSavedFragmentState);
+                    if (f.mView != null) {
+                        f.mView.setSaveFromParentEnabled(false);
+                        if (f.mHidden) f.mView.setVisibility(View.GONE);
+                        f.onViewCreated(f.mView, f.mSavedFragmentState);
+                    }
+                }
+            case Fragment.CREATED:
+                if (newState > Fragment.CREATED) {
+                    if (DEBUG) Log.v(TAG, "moveto ACTIVITY_CREATED: " + f);
+                    if (!f.mFromLayout) {
+                        ViewGroup container = null;
+                        if (f.mContainerId != 0) {
+                            container = (ViewGroup)mActivity.findViewById(f.mContainerId);
+                            if (container == null && !f.mRestored) {
+                                throw new IllegalArgumentException("No view found for id 0x"
+                                        + Integer.toHexString(f.mContainerId)
+                                        + " for fragment " + f);
+                            }
+                        }
+                        f.mContainer = container;
+                        f.mView = f.onCreateView(f.getLayoutInflater(f.mSavedFragmentState),
+                                container, f.mSavedFragmentState);
+                        if (f.mView != null) {
+                            f.mView.setSaveFromParentEnabled(false);
+                            if (container != null) {
+                                Animator anim = loadAnimator(f, transit, true,
+                                        transitionStyle);
+                                if (anim != null) {
+                                    anim.setTarget(f.mView);
+                                    anim.start();
+                                }
+                                container.addView(f.mView);
+                            }
+                            if (f.mHidden) f.mView.setVisibility(View.GONE);
+                            f.onViewCreated(f.mView, f.mSavedFragmentState);
+                        }
+                    }
+                    
+                    f.mCalled = false;
+                    f.onActivityCreated(f.mSavedFragmentState);
+                    if (!f.mCalled) {
+                        throw new SuperNotCalledException("Fragment " + f
+                                + " did not call through to super.onActivityCreated()");
+                    }
+                    if (f.mView != null) {
+                        f.restoreViewState();
+                    }
+                    f.mSavedFragmentState = null;
+                }
+            case Fragment.ACTIVITY_CREATED:
+            case Fragment.STOPPED:
+                if (newState > Fragment.STOPPED) {
+                    if (DEBUG) Log.v(TAG, "moveto STARTED: " + f);
+                    f.mCalled = false;
+                    f.performStart();
+                    if (!f.mCalled) {
+                        throw new SuperNotCalledException("Fragment " + f
+                                + " did not call through to super.onStart()");
+                    }
+                }
+            case Fragment.STARTED:
+                if (newState > Fragment.STARTED) {
+                    if (DEBUG) Log.v(TAG, "moveto RESUMED: " + f);
+                    f.mCalled = false;
+                    f.mResumed = true;
+                    f.onResume();
+                    if (!f.mCalled) {
+                        throw new SuperNotCalledException("Fragment " + f
+                                + " did not call through to super.onResume()");
+                    }
+                    // Get rid of this in case we saved it and never needed it.
+                    f.mSavedFragmentState = null;
+                    f.mSavedViewState = null;
+                }
+        }
+    } else if (f.mState > newState) {
+        switch (f.mState) {
+            case Fragment.RESUMED:
+                if (newState < Fragment.RESUMED) {
+                    if (DEBUG) Log.v(TAG, "movefrom RESUMED: " + f);
+                    f.mCalled = false;
+                    f.onPause();
+                    if (!f.mCalled) {
+                        throw new SuperNotCalledException("Fragment " + f
+                                + " did not call through to super.onPause()");
+                    }
+                    f.mResumed = false;
+                }
+            case Fragment.STARTED:
+                if (newState < Fragment.STARTED) {
+                    if (DEBUG) Log.v(TAG, "movefrom STARTED: " + f);
+                    f.mCalled = false;
+                    f.performStop();
+                    if (!f.mCalled) {
+                        throw new SuperNotCalledException("Fragment " + f
+                                + " did not call through to super.onStop()");
+                    }
+                }
+            case Fragment.STOPPED:
+            case Fragment.ACTIVITY_CREATED:
+                if (newState < Fragment.ACTIVITY_CREATED) {
+                    if (DEBUG) Log.v(TAG, "movefrom ACTIVITY_CREATED: " + f);
+                    if (f.mView != null) {
+                        // Need to save the current view state if not
+                        // done already.
+                        if (!mActivity.isFinishing() && f.mSavedViewState == null) {
+                            saveFragmentViewState(f);
+                        }
+                    }
+                    f.mCalled = false;
+                    f.performDestroyView();
+                    if (!f.mCalled) {
+                        throw new SuperNotCalledException("Fragment " + f
+                                + " did not call through to super.onDestroyView()");
+                    }
+                    if (f.mView != null && f.mContainer != null) {
+                        Animator anim = null;
+                        if (mCurState > Fragment.INITIALIZING && !mDestroyed) {
+                            anim = loadAnimator(f, transit, false,
+                                    transitionStyle);
+                        }
+                        if (anim != null) {
+                            final ViewGroup container = f.mContainer;
+                            final View view = f.mView;
+                            final Fragment fragment = f;
+                            container.startViewTransition(view);
+                            f.mAnimatingAway = anim;
+                            f.mStateAfterAnimating = newState;
+                            anim.addListener(new AnimatorListenerAdapter() {
+                                @Override
+                                public void onAnimationEnd(Animator anim) {
+                                    container.endViewTransition(view);
+                                    if (fragment.mAnimatingAway != null) {
+                                        fragment.mAnimatingAway = null;
+                                        moveToState(fragment, fragment.mStateAfterAnimating,
+                                                0, 0);
+                                    }
+                                }
+                            });
+                            anim.setTarget(f.mView);
+                            anim.start();
+
+                        }
+                        f.mContainer.removeView(f.mView);
+                    }
+                    f.mContainer = null;
+                    f.mView = null;
+                }
+            case Fragment.CREATED:
+                if (newState < Fragment.CREATED) {
+                    if (mDestroyed) {
+                        if (f.mAnimatingAway != null) {
+                            // The fragment's containing activity is
+                            // being destroyed, but this fragment is
+                            // currently animating away.  Stop the
+                            // animation right now -- it is not needed,
+                            // and we can't wait any more on destroying
+                            // the fragment.
+                            Animator anim = f.mAnimatingAway;
+                            f.mAnimatingAway = null;
+                            anim.cancel();
+                        }
+                    }
+                    if (f.mAnimatingAway != null) {
+                        // We are waiting for the fragment's view to finish
+                        // animating away.  Just make a note of the state
+                        // the fragment now should move to once the animation
+                        // is done.
+                        f.mStateAfterAnimating = newState;
+                        newState = Fragment.CREATED;
+                    } else {
+                        if (DEBUG) Log.v(TAG, "movefrom CREATED: " + f);
+                        if (!f.mRetaining) {
+                            f.mCalled = false;
+                            f.onDestroy();
+                            if (!f.mCalled) {
+                                throw new SuperNotCalledException("Fragment " + f
+                                        + " did not call through to super.onDestroy()");
+                            }
+                        }
+
+                        f.mCalled = false;
+                        f.onDetach();
+                        if (!f.mCalled) {
+                            throw new SuperNotCalledException("Fragment " + f
+                                    + " did not call through to super.onDetach()");
+                        }
+                        if (!f.mRetaining) {
+                            makeInactive(f);
+                        } else {
+                            f.mActivity = null;
+                            f.mFragmentManager = null;
+                        }
+                    }
+                }
+        }
+    }
+    
+    f.mState = newState;
+}
+```
+![](http://i.imgur.com/nz5Nfx9.jpg)
