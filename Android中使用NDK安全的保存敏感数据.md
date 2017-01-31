@@ -24,6 +24,7 @@ protected void onCreate(Bundle savedInstanceState) {
 **编码开始:)**
 ----------
 　　为了在Android Studio上方便工作.我们首选把编辑界面从Android切换到Project.
+
 ![](http://i.imgur.com/qeENyJF.png)
 　　在app/src/main目录下新建一个cpp的目录,在cpp目录下新建一个名为Native-libcpp的c/c++ source file.现在我们的这个project需要用我们编写的c++代码使用和构建我们的库,在app/src目录下新建一个CMakeLists.text的CMake 构建脚本文件,这个文件描述了我们将构建的什么以及被构建的代码在哪里。
 
