@@ -533,7 +533,53 @@ void moveToState(Fragment f, int newState, int transit, int transitionStyle) {
     f.mState = newState;
 }
 ```
-本文这里不多说了，这个地方有点多，反正就是状态跃迁，我准备重新开一篇文章重新来说这个moveState....
+　　本文这里不多说了，这个地方有点多，反正就是状态跃迁，我准备重新开一篇文章重新来说这个moveState....
 ![](http://i.imgur.com/pRWsWOI.png)
 
-现在来说说addFragment这个玩意儿：
+　　现在来说说addFragment这个玩意儿：
+
+　　addFragment就是将fragment添加到FragmentManager的管理集合-mAdded数组中。
+```java
+public void addFragment(Fragment fragment, boolean moveToStateNow) {
+    if (mAdded == null) {
+        mAdded = new ArrayList<Fragment>();
+    }
+    if (DEBUG) Log.v(TAG, "add: " + fragment);
+    makeActive(fragment);//这里还有集合-mActive
+    if (!fragment.mDetached) {个
+        mAdded.add(fragment);
+        fragment.mAdded = true;
+        fragment.mRemoving = false;
+        if (fragment.mHasMenu && fragment.mMenuVisible) {
+            mNeedMenuInvalidate = true;
+        }
+		//moToStateNow这个参数我们一般都是false,所以在BackStackRecord中的run函数中，我们会循环遍历完所有的操作序列后，一次性调用一个moveToState,并且循环每一个mActive数组元素
+        if (moveToStateNow) {
+            moveToState(fragment);
+        }
+    }
+}
+```
+
+
+　　当前处于活跃状态的fragment列表，如果fragment位于mActive中，那么当activity的状态发生变化时，fragment也会跟随着发生变化。
+```java
+void makeActive(Fragment f) {
+    if (f.mIndex >= 0) {
+        return;
+    }
+
+    if (mAvailIndices == null || mAvailIndices.size() <= 0) {
+        if (mActive == null) {
+            mActive = new ArrayList<Fragment>();
+        }
+        f.setIndex(mActive.size(), mParent);
+        mActive.add(f);
+
+    } else {
+        f.setIndex(mAvailIndices.remove(mAvailIndices.size()-1), mParent);
+        mActive.set(f.mIndex, f);
+    }
+    if (DEBUG) Log.v(TAG, "Allocated fragment index " + f);
+}
+```
